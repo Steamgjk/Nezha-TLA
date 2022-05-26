@@ -482,7 +482,9 @@ CheckCrashVector(m, r) ==
     ELSE 
         vCrashVector' = [ vCrashVector  EXCEPT ![r] = MergeCrashVector(m.cv, vCrashVector[r])]
                                
-
+FilterStrayMessage(MSet, cv) == {m \in MSet : m.cv[m.sender] >= cv[m.sender] }
+    
+    
 --------------------------------------------------------------------------------
 (* `^\textbf{\large Message Handlers and Actions }^' *)
 
@@ -850,7 +852,16 @@ HandleRecoveryRep(r, m) ==
     /\ Cardinality(vRecoveryReps[r]) <= F
     /\ ~DuplicateRep(vRecoveryReps[r], m.sender)
     /\ CheckCrashVector(m, r)
-    /\ vRecoveryReps' = [ vRecoveryReps EXCEPT ![r] = vRecoveryReps[r] \cup {m} ]
+(* `~
+    /\ vRecoveryReps' = [ vRecoveryReps EXCEPT 
+                          ![r] = vRecoveryReps[r] \cup {m}  ]
+~'
+*)
+\* Note: After crash vector is updated, those previously accepted messages may also become stray message.
+\* Those messages should also be filtered out.
+    /\ vRecoveryReps' = [ vRecoveryReps EXCEPT 
+                          ![r] = FilterStrayMessage(vRecoveryReps[r] \cup {m}, vCrashVector'[r] )  ]
+           
     /\ IF Cardinality(vRecoveryReps') = F + 1 THEN  \* got enough replies
         LET 
             newView == Max({ mm.viewID : mm \in vRecoveryReps'[r] })
@@ -968,7 +979,13 @@ HandleViewChange(r, m) ==
   \* This replica is the leader
   /\ Leader(vViewID[r]) = r
   /\ CheckCrashVector(m, r)
+(* `~
   /\ vViewChanges' = [ vViewChanges EXCEPT ![r] = vViewChanges[r] \cup {m}]
+~'
+*)
+  \* Note: Similar to vRecoveryReps, (potential) stray messages should be filtered out.
+  /\ vViewChanges' = [ vViewChanges EXCEPT 
+                       ![r] = FilterStrayMessage(vViewChanges[r] \cup {m}, vCrashVector'[r]) ]
   \* If there's enough replies, start the new view
   /\ LET
        isViewPromise(M) == /\ { n.sender : n \in M } \in Quorums
